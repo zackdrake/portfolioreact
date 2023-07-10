@@ -1,0 +1,43 @@
+export default function getPortfolioData(t) {
+  return [
+    {
+      id: "1",
+      tag: "BI",
+      title: t("article1Title"),
+      img: "/images/work_images/1.jpg",
+      imgSmall: "/images/work_images/small/1.jpg",
+      bg: "#FFF0F0",
+      client: "Envato",
+      langages: "Photoshop, Figma",
+      link: "https://www.envato.com",
+      linkText: "www.envato.com",
+      description: t("article1Text"),
+    },
+    {
+      id: "2",
+      tag: "AI",
+      title: t("article2Title"),
+      img: "/images/work_images/2.jpg",
+      imgSmall: "/images/work_images/small/2.jpg",
+      bg: "#FFF3FC",
+      client: "Themeforest",
+      langages: "HTML, CSS, Javascript",
+      link: "https://www.themeforest.net",
+      linkText: "themeforest.net",
+      description: t("article2Text"),
+    },
+    {
+      id: "3",
+      tag: "Full-Stack",
+      title: t("article3Title"),
+      img: "/images/work_images/3.jpg",
+      imgSmall: "/images/work_images/small/3.jpg",
+      bg: "#FFF0F0",
+      client: "Freepik",
+      langages: "Illustrator",
+      link: "https://www.freepik.com/free-photos-vectors/market-logo",
+      linkText: "www.freepik.com",
+      description: t("article3Text"),
+    },
+  ];
+}
