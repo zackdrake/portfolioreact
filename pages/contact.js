@@ -32,13 +32,15 @@ const index = () => {
 
             <div className="lg:flex gap-x-20">
               {/* End contact address block */}
+              {/*
               <div className="w-full lg:w-[40%] xl:w-[30%] space-y-6">
                 <Address />
               </div>
+              */}
               {/* End contact address block */}
 
               {/* Start contact form */}
-              <div className="w-full mt-8 lg:mt-0 lg:w-[60%] xl:w-[70%]">
+              <div className="w-full mt-8 lg:mt-0 lg:w-[100%] xl:w-[100%]">
                 <ContactForm />
               </div>
               {/* End contact form */}

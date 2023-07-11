@@ -61,14 +61,18 @@ const Index = () => {
 
 
           {/* personal information */}
+          {/*
           <div>
             <h3 className="text-4xl font-medium my-5 dark:text-white">
               {t('personalInformation')}
             </h3>
+
             <div className=" grid grid-cols-1 sm:grid-cols-2 gap-6">
               <PersonalInfo />
             </div>
+
           </div>
+          */}
           {/* End personal information */}
         </div>
         {/* End about right content */}

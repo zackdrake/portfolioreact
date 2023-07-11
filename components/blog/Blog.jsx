@@ -109,7 +109,7 @@ const Blog = () => {
               </span>
             </div>
             <h3
-              onClick={() => setIsOpen(true)}
+              onClick={() => handleModle(item?.id)}
               className="text-lg font-medium dark:text-white duration-300 transition cursor-pointer mt-3 pr-4 hover:text-[#FA5252] dark:hover:text-[#FA5252]"
             >
               {item?.title}
@@ -148,14 +148,29 @@ const Blog = () => {
               <h2 className="dark:text-white sm:text-3xl mt-2 font-medium">
                 {singleData?.title}
               </h2>
-              {blogDescriptionSplit?.map((item, j) => (
-                <p
-                  className="dark:text-white font-normal text-[15px] sm:text-sm my-4"
-                  key={j}
-                >
-                  {item}
-                </p>
-              ))}
+              {blogDescriptionSplit?.map((item, j) => {
+                // Check if the current item is a placeholder for a title
+                if (item.startsWith('%%') && item.endsWith('%%')) {
+                  // Extract the title from the placeholder
+                  const title = item.slice(2, -2);
+                  // Return the title wrapped in h3 tags
+                  return (
+                      <h3 key={j} className="text-1xl font-bold">
+                        {title}
+                      </h3>
+                  );
+                } else {
+                  // If it's not a title placeholder, just return the item wrapped in p tags
+                  return (
+                      <p
+                          className="dark:text-white font-normal text-[15px] sm:text-sm my-4"
+                          key={j}
+                      >
+                        {item}
+                      </p>
+                  );
+                }
+              })}
             </div>
 
             {/* Comment show section */}

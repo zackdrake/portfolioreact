@@ -192,16 +192,34 @@ const Works1 = () => {
               </div>
             </div>
             */}
+            <h2 className="text-[#ef4060] dark:hover:text-[#FA5252] text-4xl text-center font-bold">
+                {singleData?.title}
+            </h2>
 
 
-            {workDescriptionSplit?.map((item, j) => (
-                <p
-                    className="dark:text-white font-normal text-[15px] sm:text-sm my-4"
-                    key={j}
-                >
-                  {item}
-                </p>
-            ))}
+            {workDescriptionSplit?.map((item, j) => {
+              // Check if the current item is a placeholder for a title
+              if (item.startsWith('%%') && item.endsWith('%%')) {
+                // Extract the title from the placeholder
+                const title = item.slice(2, -2);
+                // Return the title wrapped in h3 tags
+                return (
+                    <h3 key={j} className="text-1xl font-bold">
+                      {title}
+                    </h3>
+                );
+              } else {
+                // If it's not a title placeholder, just return the item wrapped in p tags
+                return (
+                    <p
+                        className="dark:text-white font-normal text-[15px] sm:text-sm my-4"
+                        key={j}
+                    >
+                      {item}
+                    </p>
+                );
+              }
+            })}
 
             <Image
               className="w-full md:h-[450px]  h-auto object-cover rounded-xl mt-6"
