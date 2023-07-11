@@ -35,6 +35,7 @@ const Works1 = () => {
   };
   // End dynamic portfolio with slug
 
+  const workDescriptionSplit = singleData?.description?.split("\n");
   // start filter data based on function
   const [test, setTest] = useState("All");
 
@@ -193,9 +194,14 @@ const Works1 = () => {
             */}
 
 
-            <p className="dark:text-white    ">
-              {singleData?.description}
-            </p>
+            {workDescriptionSplit?.map((item, j) => (
+                <p
+                    className="dark:text-white font-normal text-[15px] sm:text-sm my-4"
+                    key={j}
+                >
+                  {item}
+                </p>
+            ))}
 
             <Image
               className="w-full md:h-[450px]  h-auto object-cover rounded-xl mt-6"
