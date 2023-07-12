@@ -36,7 +36,7 @@ function MyApp({ Component, pageProps }) {
         pauseOnHover
       />
 
-      <ThemeProvider attribute="class">
+      <ThemeProvider attribute="class" defaultTheme="light">
           <LanguageProvider>
             <Component {...pageProps} />
           </LanguageProvider>
