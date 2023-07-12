@@ -14,7 +14,7 @@ export async function getStaticProps({ locale }) {
     }
 }
 
-const index = () => {
+const Index = () => {
     const { t } = useTranslation('common');
   return (
     <div className="bg-homeBg min-h-screen dark:bg-homeBg-dark bg-no-repeat bg-center bg-cover bg-fixed  md:pb-16 w-full">
@@ -46,4 +46,4 @@ const index = () => {
   );
 };
 
-export default dynamic(() => Promise.resolve(index), { ssr: false });
+export default dynamic(() => Promise.resolve(Index), { ssr: false });

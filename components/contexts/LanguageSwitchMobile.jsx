@@ -24,7 +24,7 @@ export default function LanguageSwitch() {
         } else {
             setLanguage('EN');
         }
-    }, [router.locale]);
+    }, [router.locale, setLanguage]);
 
     return (
         <span

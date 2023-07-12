@@ -46,7 +46,7 @@ const Works1 = () => {
   useEffect(() => {
     setTest("All");
     handleData("All");
-  }, []);
+  }, [ setLanguage]);
 
   const [data, setData] = useState(portfolioData);
 

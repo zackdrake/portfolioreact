@@ -37,7 +37,7 @@ const Blog = () => {
   useEffect(() => {
     setTest("All");
     handleData("All");
-  }, []);
+  }, [handleData, setLanguage]);
 
   const [data, setData] = useState(blogsData);
 
