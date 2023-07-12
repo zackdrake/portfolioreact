@@ -195,6 +195,7 @@ const Works1 = () => {
             <h2 className="text-[#ef4060] dark:hover:text-[#FA5252] text-4xl text-center font-bold">
                 {singleData?.title}
             </h2>
+            <br/><br/>
 
 
             {workDescriptionSplit?.map((item, j) => {
