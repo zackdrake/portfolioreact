@@ -1,6 +1,89 @@
 {
   "name": "Benjamin Payet",
   "downloadResume": "Télécharger le CV",
+  "onlineCV": "CV en Ligne",
+  "exportPDF": "Exporter en PDF",
+  "exporting": "Exportation...",
+  "back": "Retour",
+
+  "cvName": "BENJAMIN PAYET",
+  "cvJobTitle": "Responsable Informatique — ERP & BI",
+  "cvEmail": "bpayet@et.intechinfo.fr",
+  "cvPhone": "06 16 22 44 92",
+  "cvLocation": "Vitry‑sur‑Seine (94)",
+
+  "cvAboutMeTitle": "Profil",
+  "cvSummary": "Responsable Informatique (InVivo, 05/2023 → aujourd’hui). Conception ERP web (React/Next.js), BI (Power BI/Python), admin M365/SharePoint, sécurité et automatisation. Pragmatique, rapide et orienté impact.",
+
+  "cvSkillsTitle": "Compétences clés",
+  "cvSkillsList": [
+    "ERP & Web : TypeScript, React, Next.js, HTML/CSS",
+    "Data/BI : Power BI, Python (ETL/APIs), KPI & reporting",
+    "Microsoft : M365, SharePoint, Teams — admin & gouvernance",
+    "Bases de données : MySQL",
+    "Cloud/Dev : Vercel, GCP, Git"
+  ],
+
+  "cvToolsTitle": "Outils & Technologies",
+  "cvToolsList": [
+    "React", "Next.js", "Vue.js", "JavaScript", "TypeScript", "Python", "Power BI", "Microsoft 365", "SharePoint", "MySQL", "Git", "Vercel", "Google Cloud Platform", "Go", "C#", "PHP"
+  ],
+
+  "cvExperienceTitle": "Expériences professionnelles",
+  "cvExp1Title": "Responsable Informatique",
+  "cvExp1Company": "InVivo",
+  "cvExp1Date": "Mai 2023 → Aujourd'hui",
+  "cvExp1Description": "Pilotage ERP interne : suivi d’heures, congés, ticketing, portail doc, tableaux de bord. Packs Power BI et ETL Python pour ingestion auto (APIs/fichiers/BDD). Admin M365/SharePoint (structure des sites, droits, modèles, workflows, gouvernance). Sécurité (AV/EDR, sensibilisation, tests phishing, durcissement). IT ops (achats, parc, licences) et support utilisateurs (guides, FAQ, assistance).",
+  "cvExp1Skills": ["React", "Next.js", "Vercel", "Power BI", "Python", "Microsoft 365", "SharePoint", "Sécurité IT"],
+
+  "cvExp2Title": "Développeur Full‑Stack (alternance)",
+  "cvExp2Company": "Groupe ESIEA",
+  "cvExp2Date": "2021 → 2023",
+  "cvExp2Description": "Co‑développement d’un ERP école (Go + Quasar/Vue/TypeScript).",
+  "cvExp2Skills": ["Go", "Vue.js", "Quasar", "TypeScript", "ERP"],
+
+  "cvExp3Title": "Stagiaire Développement d'outils Dashboard",
+  "cvExp3Company": "Thales GTS",
+  "cvExp3Date": "2021 (6 mois)",
+  "cvExp3Description": "Collecte de données Python (APIs) et publication sous Power BI.",
+  "cvExp3Skills": ["Python", "Power BI", "APIs", "Analyse de données"],
+
+  "cvEducationTitle": "Formation",
+  "cvEducation1Title": "INTECH Paris (Groupe ESIEA) — Programme Ingénierie du logiciel",
+  "cvEducation1Date": "2019 → 2023",
+  "cvEducation1School": "INTECH Paris",
+
+  "cvEducation2Title": "Université Paris Descartes — L3 Commerce international",
+  "cvEducation2Date": "2017 → 2018",
+  "cvEducation2School": "Université Paris Descartes",
+
+  "cvProjectsTitle": "Projets",
+  "cvProject1Title": "Trip Over Time",
+  "cvProject1Date": "2019‑2020",
+  "cvProject1Description": "Jeu de plateforme 2D en C# (équipe de 5).",
+  "cvProject1Skills": ["C#", "Game Development", "Travail d'équipe"],
+
+  "cvProject2Title": "MyPerfectList",
+  "cvProject2Description": "Agrégateur de watchlists via APIs (MAL, IMDb, Goodreads).",
+  "cvProject2Skills": ["APIs", "JavaScript", "Intégration de données"],
+
+  "cvLanguagesTitle": "Langues",
+  "cvLanguage1": "Français",
+  "cvLanguage1Level": "Natif",
+  "cvLanguage2": "Anglais",
+  "cvLanguage2Level": "Courant — TOEFL 100/120",
+
+  "cvHobbiesTitle": "Centres d'intérêt",
+  "cvHobbiesList": [
+    "Musique (guitare, piano)",
+    "Lecture (sciences, SF, polar)",
+    "Jeux vidéo (FPS, RPG, aventure)"
+  ],
+
+  "cvCertificationsTitle": "Certifications",
+  "cvCert1": "TOEFL",
+  "cvCert1Date": "100/120",
+
   "personalInformation": "Informations personnelles",
   "whoIAm": "Qui suis-je ?",
   "revealContactDetails": "Révéler les détails de contact",

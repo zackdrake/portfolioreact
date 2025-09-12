@@ -1,6 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState, useContext, useRef } from "react";
 import Image from "next/image";
 import { useTranslation } from "next-i18next";
+import { useRouter } from "next/router";
+import { useTheme } from "next-themes";
+import { LanguageContext } from "../contexts/languageContext";
 
 /**
  * Modern CV layout
@@ -11,12 +14,40 @@ import { useTranslation } from "next-i18next";
  */
 const OnlineCV = () => {
   const { t } = useTranslation("common");
+  const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const { language, setLanguage } = useContext(LanguageContext);
+
+  const [enterReady, setEnterReady] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // Reference to CV container for PDF capture
+  const cvRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    setEnterReady(true);
+  }, []);
+
+  useEffect(() => {
+    // Keep LanguageContext in sync with Next locale
+    if (router.locale === "fr") setLanguage("FR");
+    else setLanguage("EN");
+  }, [router.locale, setLanguage]);
 
   // Safely coerce any i18n value to an array so we never crash if the key is missing
   const toArray = (value) => (Array.isArray(value) ? value : []);
 
   const skills = useMemo(
     () => toArray(t("cvSkillsList", { returnObjects: true })),
+    [t]
+  );
+  const tools = useMemo(
+    () => toArray(t("cvToolsList", { returnObjects: true })),
+    [t]
+  );
+  const hobbies = useMemo(
+    () => toArray(t("cvHobbiesList", { returnObjects: true })),
     [t]
   );
 
@@ -87,199 +118,424 @@ const OnlineCV = () => {
     }
   };
 
+  // New: pixel-perfect export to PDF (screen -> canvas -> PDF) + stable searchable text layer
+  const handleExportPDF = async () => {
+    if (!cvRef.current) return;
+    try {
+      setExporting(true);
+      const prevTheme = theme;
+      // Force light theme for consistent, print-like PDF
+      if (prevTheme !== "light") setTheme("light");
+      await new Promise((r) => setTimeout(r, 200)); // allow repaint
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const element = cvRef.current;
+      element.classList.add('exporting');
+
+      // Render DOM to canvas (for exact visual fidelity)
+      const canvas = await html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: "#FFFFFF",
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      // Add the visual layer (image), possibly over multiple pages
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+      heightLeft -= pageHeight;
+      while (heightLeft > 0.5) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+        heightLeft -= pageHeight;
+      }
+
+      // Add a near-invisible text layer for search/select, mapped from DOM text nodes
+      const mmPerPx = pageWidth / canvas.width; // uniform scale X/Y
+      const elemRect = element.getBoundingClientRect();
+
+      const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            const txt = node.nodeValue || "";
+            return txt.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          },
+        },
+        false
+      );
+
+      // Pre-set text style once (white, tiny but not too tiny)
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(2);
+
+      const placeTextAt = (txt, xPx, yPx) => {
+        if (!txt) return;
+        const xMm = xPx * mmPerPx;
+        const yMmAbs = yPx * mmPerPx;
+        const pageIndex = Math.floor(yMmAbs / pageHeight);
+        const yMmOnPage = yMmAbs - pageIndex * pageHeight;
+
+        const totalPages = pdf.getNumberOfPages();
+        const targetPage = Math.min(pageIndex + 1, totalPages || 1);
+        pdf.setPage(targetPage);
+
+        // Use simple signature (no options object) to avoid jsPDF edge cases
+        pdf.text(txt, xMm, yMmOnPage);
+      };
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rects = range.getClientRects();
+
+          for (const r of rects) {
+            const xPx = (r.left - elemRect.left) + element.scrollLeft;
+            const yPx = (r.top - elemRect.top) + element.scrollTop;
+            const text = (node.nodeValue || "").trim();
+            if (!text) continue;
+            placeTextAt(text, xPx, yPx);
+          }
+        } catch (_e) {
+          // Skip nodes that fail to map
+        }
+      }
+
+      pdf.save(`${t("cvName") || "cv"}.pdf`);
+
+      // Restore theme
+      if (prevTheme !== "light") setTheme(prevTheme);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+      setTheme("light"); // fallback to ensure interface remains readable
+    } finally {
+      if (cvRef.current) {
+        cvRef.current.classList.remove('exporting');
+      }
+      setExporting(false);
+    }
+  };
+
+  const handleBack = () => {
+    setLeaving(true);
+    setTimeout(() => router.back(), 280);
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === "light" ? "dark" : "light");
+  };
+
+  const toggleLanguage = () => {
+    const next = router.locale === "fr" ? "en" : "fr";
+    setLanguage(next === "fr" ? "FR" : "EN");
+    router.push(router.pathname, router.asPath, { locale: next });
+  };
+
   return (
-    <div className="min-h-screen w-full bg-gray dark:bg-color-980 py-10 print:bg-white">
+    <div className="print-container min-h-screen w-full bg-gray-100 dark:bg-color-980 py-12 print:bg-white">
+      {/* Floating toolbar: Back + Theme + Lang + Export (screen only) */}
+      <div className="no-print fixed top-6 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-3 p-2 bg-white/70 dark:bg-color-970/70 backdrop-blur-sm rounded-full shadow-lg border border-gray-200 dark:border-color-990">
+        <button
+          onClick={handleBack}
+          className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-color-990 px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA5252]/60"
+          aria-label={t('back') || 'Back'}
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          {t('back') || 'Back'}
+        </button>
+
+        <button
+          onClick={toggleTheme}
+          className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-color-990 px-3 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA5252]/60"
+          aria-label="Toggle theme"
+          title="Theme"
+        >
+          {/* Sun/Moon glyph */}
+          {theme === "dark" ? (
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6.76 4.84l-1.8-1.79L3.17 4.84l1.79 1.8 1.8-1.8zm10.48 0l1.8-1.79 1.79 1.79-1.79 1.8-1.8-1.8zM12 5a7 7 0 100 14 7 7 0 000-14zm0-5h-1v3h1V0zm0 24h-1v-3h1v3zM4 13H1v-1h3v1zm19 0h-3v-1h3v1zM6.76 19.16l-1.8 1.8-1.79-1.8 1.79-1.79 1.8 1.79zm12.28 0l1.79 1.8-1.79 1.8-1.8-1.8 1.8-1.8z"/></svg>
+          ) : (
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+          )}
+        </button>
+
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-color-990 px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA5252]/60"
+          aria-label="Toggle language"
+          title="Language"
+        >
+          {language === "EN" ? "FR" : "EN"}
+        </button>
+
+        <button
+          onClick={handleExportPDF}
+          disabled={exporting}
+          className={`flex items-center px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#DD2476]/60 text-white ${exporting ? 'bg-[#DD2476]/70 cursor-not-allowed' : 'bg-gradient-to-r from-[#FA5252] to-[#DD2476] hover:from-[#DD2476] hover:to-[#FA5252]'}`}
+          aria-label={t('exportPDF') || 'Export to PDF'}
+          title={t('exportPDF') || 'Export to PDF'}
+        >
+          {exporting ? (
+            <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4A4 4 0 008 12H4z"></path>
+            </svg>
+          ) : (
+            <DownloadIcon className="w-5 h-5 mr-2" />
+          )}
+          {exporting ? t('exporting', { defaultValue: 'Exporting…' }) : (t('exportPDF') || 'Export to PDF')}
+        </button>
+      </div>
       <div
         id="cv-print-area"
-        className="mx-auto w-full max-w-[950px] bg-white dark:bg-color-970 shadow-xl rounded-2xl overflow-hidden print:shadow-none print:rounded-none"
+        ref={cvRef}
+        className={`mt-32 mx-auto bg-white dark:bg-color-970 shadow-2xl rounded-lg overflow-hidden print:shadow-none print:rounded-none transition-all duration-300 ease-out ${leaving ? 'opacity-0 translate-y-2' : enterReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+        style={{ width: '210mm' }}
       >
-        {/* Header */}
-        <div className="relative px-8 py-8 border-b border-gray-200 dark:border-color-990">
-          <div className="flex items-center gap-6">
-            <div className="w-28 h-28 rounded-full overflow-hidden ring-4 ring-[#FA5252]/80 flex-shrink-0">
-              <Image
-                src="/images/about/avatar.jpg"
-                alt={t("cvName")}
-                width={200}
-                height={200}
-                className="w-full h-full object-cover"
-                priority
-              />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white leading-tight">
-                {t("cvName")}
-              </h1>
-              <p className="text-base md:text-lg text-gray-600 dark:text-color-910">
-                {t("cvJobTitle")}
-              </p>
-
-              {/* Quick contact line */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-color-910">
-                <span className="inline-flex items-center">
-                  <MailIcon className="w-4 h-4 mr-2" />
-                  {t("cvEmail")}
-                </span>
-                <span className="inline-flex items-center">
-                  <PhoneIcon className="w-4 h-4 mr-2" />
-                  {t("cvPhone")}
-                </span>
-                <span className="inline-flex items-center">
-                  <LocationIcon className="w-4 h-4 mr-2" />
-                  {t("cvLocation")}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Export button */}
-          <div className="no-print absolute top-8 right-8">
-            <button
-              onClick={handlePrint}
-              className="flex items-center bg-gradient-to-r from-[#FA5252] to-[#DD2476] hover:from-[#DD2476] hover:to-[#FA5252] text-white px-5 py-2 rounded-full text-sm font-medium transition-colors"
-              aria-label={t("exportPDF")}
-            >
-              <DownloadIcon className="w-4 h-4 mr-2" />
-              {t("exportPDF")}
-            </button>
-          </div>
-        </div>
-
         {/* Body */}
         <div className="grid grid-cols-1 md:grid-cols-3">
           {/* Sidebar */}
-          <aside className="bg-[#F8FAFC] dark:bg-color-980 px-8 py-8 md:py-10">
-            <SectionTitle>{t("cvLanguagesTitle")}</SectionTitle>
-            <div className="space-y-2 text-sm">
-              <LineItem label={t("cvLanguage1")} note={t("cvLanguage1Level")} />
-              <LineItem label={t("cvLanguage2")} note={t("cvLanguage2Level")} />
+          <aside
+            className="md:col-span-1 bg-gray-50 dark:bg-color-980/70 text-gray-800 dark:text-gray-200"
+            data-aos="fade-right"
+          >
+            <div className="text-center bg-gray-100 dark:bg-color-970/50 pt-12 pb-10">
+                <div className="w-36 h-36 mx-auto rounded-full overflow-hidden ring-4 ring-white dark:ring-color-990 shadow-lg image-container">
+                  <Image
+                    src="/images/about/avatar.jpg"
+                    alt={t('cvName')}
+                    width={240}
+                    height={240}
+                    className="w-full h-full object-cover"
+                    priority
+                  />
+                </div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-6 tracking-wide">
+                {t("cvName")}
+              </h1>
+              <p className="text-lg text-[#FA5252] mt-1 font-semibold">
+                {t("cvJobTitle")}
+              </p>
             </div>
 
-            <div className="h-6" />
+            <div className="p-8 space-y-8">
+              <SidebarSection title="Contact">
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center">
+                    <MailIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="truncate">{t("cvEmail")}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <PhoneIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="truncate">{t("cvPhone")}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <LocationIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="truncate">{t("cvLocation")}</span>
+                  </div>
+                </div>
+              </SidebarSection>
 
-            <SectionTitle>{t("cvSkillsTitle")}</SectionTitle>
-            <ul className="list-disc list-inside text-sm text-gray-700 dark:text-color-910 space-y-1">
-              {skills.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
+              <SidebarSection title={t("cvLanguagesTitle")}>
+                <div className="space-y-2 text-sm">
+                  <LineItem label={t("cvLanguage1")} note={t("cvLanguage1Level")} />
+                  <LineItem label={t("cvLanguage2")} note={t("cvLanguage2Level")} />
+                </div>
+              </SidebarSection>
 
-            <div className="h-6" />
+              <SidebarSection title={t("cvSkillsTitle")}>
+                <ul className="space-y-2 text-sm">
+                  {skills.map((s, i) => (
+                    <li key={i} className="flex items-center">
+                      <CheckIcon className="w-4 h-4 mr-2 text-[#FA5252]" />
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ul>
+              </SidebarSection>
 
-            <SectionTitle>{t("cvCertificationsTitle")}</SectionTitle>
-            <ul className="text-sm text-gray-700 dark:text-color-910 space-y-1">
-              <li className="flex items-center">
-                <Badge className="mr-2" />
-                <span className="font-medium">{t("cvCert1")}</span>
-                {t("cvCert1Date", { defaultValue: "" }) && (
-                  <span className="ml-2 text-gray-500 dark:text-color-910">
-                    ({t("cvCert1Date")})
-                  </span>
-                )}
-              </li>
-            </ul>
+              {tools.length > 0 && (
+                <SidebarSection title={t("cvToolsTitle", { defaultValue: "Logiciels" })}>
+                  <div className="flex flex-wrap gap-2">
+                    {tools.map((tool, i) => (
+                      <span key={i} className="px-3 py-1 text-xs rounded-full bg-gray-200/80 dark:bg-white/10 text-gray-700 dark:text-gray-200">
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                </SidebarSection>
+              )}
+
+              {hobbies.length > 0 && (
+                <SidebarSection title={t("cvHobbiesTitle", { defaultValue: "Passions & Activités" })}>
+                  <ul className="space-y-2 text-sm">
+                    {hobbies.map((h, i) => (
+                       <li key={i} className="flex items-center">
+                         <HeartIcon className="w-4 h-4 mr-2 text-[#DD2476]" />
+                         <span>{h}</span>
+                       </li>
+                    ))}
+                  </ul>
+                </SidebarSection>
+              )}
+
+              <SidebarSection title={t("cvCertificationsTitle")}>
+                <ul className="text-sm space-y-2">
+                  <li className="flex items-center">
+                    <Badge className="w-5 h-5 mr-2" />
+                    <div>
+                      <span className="font-semibold">{t("cvCert1")}</span>
+                      {t("cvCert1Date", { defaultValue: "" }) && (
+                        <span className="ml-2 opacity-80 text-xs">({t("cvCert1Date")})</span>
+                      )}
+                    </div>
+                  </li>
+                </ul>
+              </SidebarSection>
+            </div>
           </aside>
 
           {/* Main content */}
-          <main className="md:col-span-2 px-8 py-8 md:py-10">
-            <SectionTitle accent>{t("cvExperienceTitle")}</SectionTitle>
-            <div className="space-y-6">
-              {experiences.map((exp, idx) => (
-                <div key={idx} className="relative pl-6">
-                  <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-[#FA5252]" />
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {exp.title} •{" "}
-                      <span className="text-[#FA5252]">{exp.company}</span>
-                    </h3>
-                    <span className="text-sm text-gray-500 dark:text-color-910 mt-1 md:mt-0">
-                      {exp.date}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-700 dark:text-color-910">
-                    {exp.description}
-                  </p>
-                  {exp.skills?.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {exp.skills.map((tag, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-0.5 text-xs rounded-full bg-[#FFF4F4] text-[#FA5252] dark:bg-color-980 dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="h-8 print:h-6" />
-
-            <SectionTitle accent>{t("cvEducationTitle")}</SectionTitle>
-            <div className="space-y-4">
-              {education.map((ed, i) => (
-                <div key={i} className="relative pl-6">
-                  <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-[#FA5252]" />
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {ed.title}
-                    </h3>
-                    <span className="text-sm text-gray-500 dark:text-color-910 mt-1 md:mt-0">
-                      {ed.date}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-700 dark:text-color-910">
-                    {ed.school}
+          <main className="md:col-span-2 p-8 md:p-10 text-gray-700 dark:text-gray-300">
+            {t("cvSummary", { defaultValue: "" }) ? (
+                <div className="mb-10" data-aos="fade-up">
+                  <SectionTitle>{t("cvAboutMeTitle", { defaultValue: "À propos de moi"})}</SectionTitle>
+                  <p className="text-base text-gray-600 dark:text-color-910 leading-relaxed">
+                    {t("cvSummary")}
                   </p>
                 </div>
-              ))}
-            </div>
+              ) : null}
 
-            <div className="h-8 print:h-6" />
-
-            <SectionTitle accent>{t("cvProjectsTitle")}</SectionTitle>
-            <div className="space-y-6">
-              {projects.map((p, i) => (
-                <div key={i} className="relative pl-6 break-inside-avoid">
-                  <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-[#FA5252]" />
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {p.title}
-                    </h3>
-                    {p.date ? (
-                      <span className="text-sm text-gray-500 dark:text-color-910 mt-1 md:mt-0">
-                        {p.date}
+            <div className="mb-10" data-aos="fade-up" data-aos-delay="100">
+              <SectionTitle>{t("cvExperienceTitle")}</SectionTitle>
+              <div className="space-y-8">
+                {experiences.map((exp, idx) => (
+                  <div key={idx} className="break-inside-avoid">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
+                      <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                        {exp.title}
+                      </h3>
+                      <span className="text-sm text-gray-500 dark:text-gray-400 mt-1 sm:mt-0">
+                        {exp.date}
                       </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-sm text-gray-700 dark:text-color-910">
-                    {p.description}
-                  </p>
-                  {p.skills?.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {p.skills.map((tag, j) => (
-                        <span
-                          key={j}
-                          className="px-2 py-0.5 text-xs rounded-full bg-[#FFF4F4] text-[#FA5252] dark:bg-color-980 dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
-                        >
-                          {tag}
-                        </span>
-                      ))}
                     </div>
-                  )}
-                </div>
-              ))}
+                    <p className="text-md text-[#FA5252] font-medium mb-2">{exp.company}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {exp.description}
+                    </p>
+                    {exp.skills?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {exp.skills.map((tag, i) => (
+                          <span
+                            key={i}
+                            className="px-2.5 py-0.5 text-xs rounded-full bg-[#FFF4F4] dark:bg-color-980 text-[#FA5252] dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-10" data-aos="fade-up" data-aos-delay="150">
+              <SectionTitle>{t("cvEducationTitle")}</SectionTitle>
+              <div className="space-y-6">
+                {education.map((ed, i) => (
+                  <div key={i} className="break-inside-avoid">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
+                      <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                        {ed.title}
+                      </h3>
+                      <span className="text-sm text-gray-500 dark:text-gray-400 mt-1 sm:mt-0">
+                        {ed.date}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      {ed.school}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div data-aos="fade-up" data-aos-delay="200">
+              <SectionTitle>{t("cvProjectsTitle")}</SectionTitle>
+              <div className="space-y-8">
+                {projects.map((p, i) => (
+                  <div key={i} className="break-inside-avoid">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
+                      <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                        {p.title}
+                      </h3>
+                      {p.date ? (
+                        <span className="text-sm text-gray-500 dark:text-gray-400 mt-1 sm:mt-0">
+                          {p.date}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {p.description}
+                    </p>
+                    {p.skills?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {p.skills.map((tag, j) => (
+                           <span
+                            key={j}
+                            className="px-2.5 py-0.5 text-xs rounded-full bg-[#FFF4F4] dark:bg-color-980 text-[#FA5252] dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </main>
         </div>
       </div>
 
-      {/* Print-specific styles */}
+      {/* Print & export specific styles */}
       <style jsx global>{`
+        /* Keep avatar stable during export */
+        #cv-print-area.exporting .image-container img {
+          object-fit: cover !important;
+        }
+
+        /* Screen adjustments so A4 width never overflows viewport */
+        @media screen {
+          #cv-print-area {
+            width: min(210mm, 95vw);
+            height: auto;
+          }
+        }
+
         @media print {
-          /* Only print the CV area */
           body {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -288,18 +544,33 @@ const OnlineCV = () => {
           .no-print {
             display: none !important;
           }
-          #__next > *:not(#cv-print-area) {
+          /* Ensure only CV is printed */
+          body > *:not(.print-container) {
             display: none !important;
           }
-          #cv-print-area {
+          .print-container {
             display: block !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
           }
-          /* A4 size with margins */
+
           @page {
             size: A4;
-            margin: 12mm;
+            margin: 0;
+          }
+
+          #cv-print-area {
+            display: block !important;
+            width: 210mm !important;
+            min-height: 297mm !important; /* Use min-height for print */
+            height: auto !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            overflow: visible !important;
+          }
+
+          #cv-print-area .break-inside-avoid {
+            break-inside: avoid !important;
           }
         }
       `}</style>
@@ -309,31 +580,47 @@ const OnlineCV = () => {
 
 /* Reusable UI bits */
 
-const SectionTitle = ({ children, accent = false }) => (
-  <h2
-    className={`mb-3 font-semibold ${
-      accent ? "text-[#FA5252]" : "text-gray-900 dark:text-white"
-    }`}
-  >
+const SidebarSection = ({ title, children }) => (
+  <div className="break-inside-avoid">
+    <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-gray-500 dark:text-gray-400">{title}</h3>
     {children}
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-6 pb-2 border-b-2 border-gray-200 dark:border-gray-700/50 relative">
+    {children}
+    <span className="absolute bottom-[-2px] left-0 w-24 h-[3px] bg-gradient-to-r from-[#FA5252] to-[#DD2476]" />
   </h2>
 );
 
 const LineItem = ({ label, note }) => (
-  <div className="flex items-center justify-between text-gray-700 dark:text-color-910">
+  <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
     <span className="font-medium">{label}</span>
-    {note && <span className="text-xs text-gray-500 dark:text-color-910">{note}</span>}
+    {note && <span className="text-xs text-gray-500 dark:text-gray-400">{note}</span>}
   </div>
+);
+
+const CheckIcon = ({ className = "" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"></polyline>
+  </svg>
+);
+
+const HeartIcon = ({ className = "" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+  </svg>
 );
 
 const Badge = ({ className = "" }) => (
   <svg
-    className={`w-4 h-4 text-[#FA5252] ${className}`}
+    className={`text-[#FA5252] ${className}`}
     viewBox="0 0 24 24"
     fill="currentColor"
     aria-hidden="true"
   >
-    <path d="M12 2l2.39 4.84L20 8.27l-3.9 3.8.92 5.36L12 15.77l-4.99 2.66.92-5.36L4 8.27l5.61-1.43L12 2z" />
+    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.007z" clipRule="evenodd" />
   </svg>
 );
 
@@ -380,16 +667,8 @@ const LocationIcon = ({ className = "" }) => (
     strokeWidth="2"
     aria-hidden="true"
   >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M12 11a4 4 0 100-8 4 4 0 000 8z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M12 13c-4.418 0-8 2.239-8 5v2h16v-2c0-2.761-3.582-5-8-5z"
-    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
 
@@ -402,8 +681,7 @@ const DownloadIcon = ({ className = "" }) => (
     strokeWidth="2"
     aria-hidden="true"
   >
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M5 21h14a2 2 0 002-2v-3" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
   </svg>
 );
 
