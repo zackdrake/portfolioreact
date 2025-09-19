@@ -48,6 +48,12 @@
   "cvExp3Description": "Python data collection (APIs) and publication in Power BI.",
   "cvExp3Skills": ["Python", "Power BI", "APIs", "Data Analysis"],
 
+  "cvExp4Title": "Study & Development Engineering Assistant",
+  "cvExp4Company": "Degetel",
+  "cvExp4Date": "2020 (internship)",
+  "cvExp4Description": "Built ML models to predict project performance (Python) and published interactive dashboards on Google Cloud Platform, improving planning and decision-making.",
+  "cvExp4Skills": ["Python", "Machine Learning", "GCP", "Dashboards"],
+
   "cvEducationTitle": "Education",
   "cvEducation1Title": "INTECH Paris (ESIEA Group) — Software Engineering Program",
   "cvEducation1Date": "2019 → 2023",
@@ -56,6 +62,10 @@
   "cvEducation2Title": "University Paris Descartes — L3 International Trade",
   "cvEducation2Date": "2017 → 2018",
   "cvEducation2School": "University Paris Descartes",
+
+  "cvEducation3Title": "Lycée de Bras‑Fusil — MUC (Management of Commercial Units)",
+  "cvEducation3Date": "2015 → 2016",
+  "cvEducation3School": "Lycée de Bras‑Fusil (Réunion)",
 
   "cvProjectsTitle": "Projects",
   "cvProject1Title": "Trip Over Time",

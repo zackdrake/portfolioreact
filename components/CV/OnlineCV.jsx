@@ -74,6 +74,13 @@ const OnlineCV = () => {
         description: t("cvExp3Description"),
         skills: toArray(t("cvExp3Skills", { returnObjects: true })),
       },
+      {
+        title: t("cvExp4Title", { defaultValue: "" }),
+        company: t("cvExp4Company", { defaultValue: "" }),
+        date: t("cvExp4Date", { defaultValue: "" }),
+        description: t("cvExp4Description", { defaultValue: "" }),
+        skills: toArray(t("cvExp4Skills", { returnObjects: true })),
+      },
     ],
     [t]
   );
@@ -89,6 +96,11 @@ const OnlineCV = () => {
         title: t("cvEducation2Title"),
         date: t("cvEducation2Date"),
         school: t("cvEducation2School"),
+      },
+      {
+        title: t("cvEducation3Title", { defaultValue: "" }),
+        date: t("cvEducation3Date", { defaultValue: "" }),
+        school: t("cvEducation3School", { defaultValue: "" }),
       },
     ],
     [t]
@@ -118,129 +130,209 @@ const OnlineCV = () => {
     }
   };
 
-  // New: pixel-perfect export to PDF (screen -> canvas -> PDF) + stable searchable text layer
+  // Export to selectable-text PDF via pdfmake (no html2canvas), tuned for chip/contact styles
   const handleExportPDF = async () => {
-    if (!cvRef.current) return;
     try {
       setExporting(true);
-      const prevTheme = theme;
-      // Force light theme for consistent, print-like PDF
-      if (prevTheme !== "light") setTheme("light");
-      await new Promise((r) => setTimeout(r, 200)); // allow repaint
 
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
+      const pdfMakeMod = await import("pdfmake/build/pdfmake");
+      const pdfFontsMod = await import("pdfmake/build/vfs_fonts");
+      const pdfMake = (pdfMakeMod.default || pdfMakeMod);
+      const pdfFonts = (pdfFontsMod.default || pdfFontsMod);
+      pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts.vfs;
 
-      const element = cvRef.current;
-      element.classList.add('exporting');
+      const isFR = router.locale === "fr";
+      const isDark = theme === "dark";
+      const accent = isDark ? "#D4AF37" : "#06B6D4";   // cyan/gold
+      const accent2 = isDark ? "#F6E27A" : "#34D399";  // green/amber
+      const text = isDark ? "#E5E7EB" : "#374151";
+      const sub = isDark ? "#A3A3A3" : "#6B7280";
+      const panelBg = isDark ? "#0F172A" : "#F8FAFC";
 
-      // Render DOM to canvas (for exact visual fidelity)
-      const canvas = await html2canvas(element, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: "#FFFFFF",
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight,
+      // Chip style for PDF: add lineHeight for vertical centering
+      const pill = (label) => ({
+        text: label,
+        color: "#0F172A",
+        background: isDark ? accent2 : "#E0F2FE",
+        margin: [0, 1, 4, 1],
+        fontSize: 9,
+        lineHeight: 1,
+        padding: 2,
       });
 
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+      // Left column stack
+      const leftStack = [
+        { text: isFR ? "Contact" : "Contact", style: "leftH" },
+        { text: t("cvEmail"), style: "contact" },
+        { text: t("cvPhone"), style: "contact" },
+        { text: t("cvLocation"), style: "contact", margin: [0, 1, 0, 6] },
 
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        { text: isFR ? "Langues" : "Languages", style: "leftH", margin: [0, 6, 0, 4] },
+        ...[
+          { label: t("cvLanguage1"), level: t("cvLanguage1Level") },
+          { label: t("cvLanguage2"), level: t("cvLanguage2Level") },
+        ].map((l) => ({
+          stack: [
+            {
+              columns: [
+                { text: l.label, fontSize: 9, color: text },
+                { text: l.level, alignment: "right", fontSize: 8, color: sub },
+              ],
+            },
+            {
+              canvas: [
+                { type: "rect", x: 0, y: 0, w: 150, h: 3, color: isDark ? "#1F2937" : "#E5E7EB" },
+                {
+                  type: "rect",
+                  x: 0,
+                  y: 0,
+                  w: (l.level?.toLowerCase().includes("native") ? 0.98 : 0.85) * 150,
+                  h: 3,
+                  color: accent,
+                },
+              ],
+              margin: [0, 2, 0, 4],
+            },
+          ],
+        })),
 
-      // Add the visual layer (image), possibly over multiple pages
-      let heightLeft = imgHeight;
-      let position = 0;
+        { text: t("cvSkillsTitle"), style: "leftH", margin: [0, 8, 0, 4] },
+        { columns: skills.map((s) => pill(s)) },
 
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-      heightLeft -= pageHeight;
-      while (heightLeft > 0.5) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
-        heightLeft -= pageHeight;
-      }
+        tools.length
+          ? { text: t("cvToolsTitle", { defaultValue: isFR ? "Outils" : "Tools" }), style: "leftH", margin: [0, 8, 0, 4] }
+          : null,
+        tools.length ? { columns: tools.map((s) => pill(s)) } : null,
 
-      // Add a near-invisible text layer for search/select, mapped from DOM text nodes
-      const mmPerPx = pageWidth / canvas.width; // uniform scale X/Y
-      const elemRect = element.getBoundingClientRect();
+        hobbies.length
+          ? { text: t("cvHobbiesTitle", { defaultValue: isFR ? "Passions & Activités" : "Hobbies" }), style: "leftH", margin: [0, 8, 0, 4] }
+          : null,
+        hobbies.length ? { columns: hobbies.map((s) => pill(s)) } : null,
 
-      const walker = document.createTreeWalker(
-        element,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            const txt = node.nodeValue || "";
-            return txt.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        { text: t("cvCertificationsTitle"), style: "leftH", margin: [0, 8, 0, 4] },
+        { text: `${t("cvCert1")} ${t("cvCert1Date", { defaultValue: "" }) ? `(${t("cvCert1Date")})` : ""}`, fontSize: 8, color: text },
+      ].filter(Boolean);
+
+      const expBlocks = experiences
+        .filter((e) => e?.title || e?.company || e?.description)
+        .map((e) => ({
+          stack: [
+            {
+              columns: [
+                { text: e.title, bold: true, fontSize: 10, color: text },
+                { text: e.date, alignment: "right", color: sub, fontSize: 8 },
+              ],
+            },
+            { text: e.company, color: isDark ? accent2 : "#0E7490", margin: [0, 2, 0, 2], fontSize: 9 },
+            { text: e.description, color: text, fontSize: 9, lineHeight: 1.25, margin: [0, 0, 0, 4] },
+            e.skills?.length ? { columns: e.skills.map((s) => pill(s)) } : null,
+            {
+              canvas: [{ type: "line", x1: 0, y1: 0, x2: 330, y2: 0, lineWidth: 0.5, lineColor: isDark ? "#1F2937" : "#E5E7EB" }],
+              margin: [0, 6, 0, 6],
+            },
+          ].filter(Boolean),
+        }));
+
+      const eduBlocks = education
+        .filter((ed) => ed?.title || ed?.school)
+        .map((ed, idx) => ({
+          stack: [
+            {
+              columns: [
+                { text: ed.title, bold: true, fontSize: 10, color: text },
+                { text: ed.date, alignment: "right", color: sub, fontSize: 8 },
+              ],
+            },
+            { text: ed.school, color: sub, fontSize: 8, margin: [0, 2, 0, idx === education.length - 1 ? 0 : 6] },
+          ],
+        }));
+
+      const docDefinition = {
+        pageSize: "A4",
+        pageMargins: [16, 22, 16, 20],
+        content: [
+          // Header
+          {
+            columns: [
+              { text: t("cvName"), style: "name" },
+              { text: t("cvJobTitle"), style: "title", alignment: "right" },
+            ],
+            margin: [0, 0, 0, 6],
           },
+          {
+            canvas: [
+              { type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: isDark ? "#1F2937" : "#E5E7EB" },
+              { type: "line", x1: 0, y1: 2, x2: 110, y2: 2, lineWidth: 3, lineColor: accent },
+            ],
+            margin: [0, 2, 0, 10],
+          },
+
+          // Body
+          {
+            columns: [
+              {
+                width: "34%",
+                table: { widths: ["*"], body: [[{ stack: leftStack }]] },
+                layout: {
+                  fillColor: () => panelBg,
+                  paddingLeft: () => 10,
+                  paddingRight: () => 10,
+                  paddingTop: () => 10,
+                  paddingBottom: () => 10,
+                  hLineWidth: () => 0,
+                  vLineWidth: () => 0,
+                },
+              },
+              {
+                width: "66%",
+                stack: [
+                  t("cvSummary", { defaultValue: "" })
+                    ? {
+                        stack: [
+                          { text: t("cvAboutMeTitle", { defaultValue: isFR ? "Profil" : "Profile" }), style: "sectionH" },
+                          { text: t("cvSummary"), fontSize: 9, color: text, lineHeight: 1.25, margin: [0, 0, 0, 8] },
+                        ],
+                      }
+                    : null,
+                  { text: t("cvExperienceTitle"), style: "sectionH" },
+                  ...expBlocks,
+                  { text: t("cvEducationTitle"), style: "sectionH", margin: [0, 4, 0, 0] },
+                  ...eduBlocks,
+                ].filter(Boolean),
+              },
+            ],
+            columnGap: 12,
+          },
+        ],
+        defaultStyle: { color: text, fontSize: 9 },
+        styles: {
+          name: { fontSize: 18, bold: true, color: isDark ? "#FFFFFF" : "#0F172A" },
+          title: { fontSize: 9, color: sub },
+          sectionH: { fontSize: 11, bold: true, margin: [0, 0, 0, 4], decoration: "underline", decorationColor: accent },
+          leftH: { fontSize: 11, bold: true, color: accent, margin: [0, 0, 0, 4] },
+          contact: { fontSize: 8, color: text, margin: [0, 1, 0, 1], lineHeight: 1.35 },
         },
-        false
-      );
-
-      // Pre-set text style once (white, tiny but not too tiny)
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(2);
-
-      const placeTextAt = (txt, xPx, yPx) => {
-        if (!txt) return;
-        const xMm = xPx * mmPerPx;
-        const yMmAbs = yPx * mmPerPx;
-        const pageIndex = Math.floor(yMmAbs / pageHeight);
-        const yMmOnPage = yMmAbs - pageIndex * pageHeight;
-
-        const totalPages = pdf.getNumberOfPages();
-        const targetPage = Math.min(pageIndex + 1, totalPages || 1);
-        pdf.setPage(targetPage);
-
-        // Use simple signature (no options object) to avoid jsPDF edge cases
-        pdf.text(txt, xMm, yMmOnPage);
       };
 
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
-        try {
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          const rects = range.getClientRects();
-
-          for (const r of rects) {
-            const xPx = (r.left - elemRect.left) + element.scrollLeft;
-            const yPx = (r.top - elemRect.top) + element.scrollTop;
-            const text = (node.nodeValue || "").trim();
-            if (!text) continue;
-            placeTextAt(text, xPx, yPx);
-          }
-        } catch (_e) {
-          // Skip nodes that fail to map
-        }
-      }
-
-      pdf.save(`${t("cvName") || "cv"}.pdf`);
-
-      // Restore theme
-      if (prevTheme !== "light") setTheme(prevTheme);
+      pdfMake.createPdf(docDefinition).download(`${t("cvName") || "cv"}.pdf`);
     } catch (e) {
       console.error("PDF export failed:", e);
-      setTheme("light"); // fallback to ensure interface remains readable
     } finally {
-      if (cvRef.current) {
-        cvRef.current.classList.remove('exporting');
-      }
       setExporting(false);
     }
   };
 
   const handleBack = () => {
+    const locale = router.locale === "fr" ? "fr" : "en";
+    const target = `https://benjaminpayet.vercel.app/${locale}`;
     setLeaving(true);
-    setTimeout(() => router.back(), 280);
+    setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.location.href = target;
+      } else {
+        router.push(`/${locale}`);
+      }
+    }, 200);
   };
 
   const toggleTheme = () => {
@@ -253,10 +345,41 @@ const OnlineCV = () => {
     router.push(router.pathname, router.asPath, { locale: next });
   };
 
+  const goToProjects = () => {
+    const locale = router.locale === "fr" ? "fr" : "en";
+    const url = `https://benjaminpayet.vercel.app/${locale}/works`;
+    if (typeof window !== "undefined") window.location.href = url;
+  };
+
+  // Floating Projects pill positioning: biased closer to screen right edge
+  const [projOffsetRight, setProjOffsetRight] = useState(24);
+  const updateProjectsOffset = () => {
+    if (typeof window === "undefined" || !cvRef.current) return;
+    const rect = cvRef.current.getBoundingClientRect();
+    const gap = Math.max(0, window.innerWidth - rect.right); // space between CV and screen right
+    // Place the button closer to the screen edge (20% of gap), keep a small min margin
+    const offset = Math.max(12, gap * 0.2);
+    setProjOffsetRight(offset);
+  };
+  useEffect(() => {
+    updateProjectsOffset();
+    const onResize = () => updateProjectsOffset();
+    const onScroll = () => updateProjectsOffset();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const t = setTimeout(updateProjectsOffset, 80); // after initial paint/fonts
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enterReady]);
+
   return (
     <div className="print-container min-h-screen w-full bg-gray-100 dark:bg-color-980 py-12 print:bg-white">
-      {/* Floating toolbar: Back + Theme + Lang + Export (screen only) */}
-      <div className="no-print fixed top-6 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-3 p-2 bg-white/70 dark:bg-color-970/70 backdrop-blur-sm rounded-full shadow-lg border border-gray-200 dark:border-color-990">
+      {/* Floating toolbar: Back + Theme + Lang + Export (desktop only) */}
+      <div className="no-print hidden md:flex fixed top-6 left-1/2 -translate-x-1/2 z-50 flex-wrap items-center justify-center gap-3 p-2 bg-white/70 dark:bg-color-970/70 backdrop-blur-sm rounded-full shadow-lg border border-gray-200 dark:border-color-990">
         <button
           onClick={handleBack}
           className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-color-990 px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA5252]/60"
@@ -292,7 +415,11 @@ const OnlineCV = () => {
         <button
           onClick={handleExportPDF}
           disabled={exporting}
-          className={`flex items-center px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#DD2476]/60 text-white ${exporting ? 'bg-[#DD2476]/70 cursor-not-allowed' : 'bg-gradient-to-r from-[#FA5252] to-[#DD2476] hover:from-[#DD2476] hover:to-[#FA5252]'}`}
+          className={`flex items-center px-4 py-2 rounded-full text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 text-white ${
+            exporting
+              ? 'bg-cyan-500/60 dark:bg-amber-400/60 cursor-not-allowed'
+              : 'bg-gradient-to-r from-[#06B6D4] to-[#34D399] dark:from-[#D4AF37] dark:to-[#F6E27A] hover:opacity-95'
+          }`}
           aria-label={t('exportPDF') || 'Export to PDF'}
           title={t('exportPDF') || 'Export to PDF'}
         >
@@ -307,21 +434,136 @@ const OnlineCV = () => {
           {exporting ? t('exporting', { defaultValue: 'Exporting…' }) : (t('exportPDF') || 'Export to PDF')}
         </button>
       </div>
+
+      {/* Mobile header (Back + Projects + Theme + Lang + Export) */}
+      <div className="no-print md:hidden fixed top-0 left-0 right-0 z-50">
+        <div className="mx-auto flex items-center justify-between gap-1 px-2 py-1 bg-white/80 dark:bg-color-970/80 backdrop-blur border-b border-gray-200 dark:border-color-990">
+          <button
+            onClick={handleBack}
+            className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white px-2 py-1 rounded-full text-xs shadow-sm"
+            aria-label={t('back') || 'Back'}
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            {t('back') || 'Back'}
+          </button>
+
+          <button
+            onClick={goToProjects}
+            className="attention-pulse-30s flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium text-white shadow bg-gradient-to-r from-[#F59E0B] to-[#F97316] dark:from-[#FB923C] dark:to-[#F59E0B]"
+            aria-label={router.locale === 'fr' ? 'Voir les projets' : 'View Projects'}
+            title={router.locale === 'fr' ? 'Voir les projets' : 'View Projects'}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h6m0 0v6m0-6l-8 8M7 17h0"/>
+            </svg>
+            {router.locale === 'fr' ? 'Projets' : 'Projects'}
+          </button>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white px-2 py-1 rounded-full text-xs shadow-sm"
+              aria-label="Toggle theme"
+              title="Theme"
+            >
+              {theme === "dark" ? (
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6.76 4.84l-1.8-1.79L3.17 4.84l1.79 1.8 1.8-1.8zm10.48 0l1.8-1.79 1.79 1.79-1.79 1.8-1.8-1.8zM12 5a7 7 0 100 14 7 7 0 000-14z"/></svg>
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+              )}
+            </button>
+
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center bg-white dark:bg-color-970 border border-gray-200 dark:border-color-990 text-gray-700 dark:text-white px-2 py-1 rounded-full text-xs shadow-sm"
+              aria-label="Toggle language"
+              title="Language"
+            >
+              {language === "EN" ? "FR" : "EN"}
+            </button>
+
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting}
+              className={`flex items-center px-3 py-1 rounded-full text-xs text-white shadow ${exporting ? 'bg-cyan-500/60 dark:bg-amber-400/60' : 'bg-gradient-to-r from-[#06B6D4] to-[#34D399] dark:from-[#D4AF37] dark:to-[#F6E27A]'}`}
+              aria-label={t('exportPDF') || 'Export to PDF'}
+              title={t('exportPDF') || 'Export to PDF'}
+            >
+              {exporting ? (
+                <svg className="animate-spin h-4 w-4 mr-1 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4A4 4 0 008 12H4z"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+              {t('exportPDF') || 'Export'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Floating Projects pill (desktop), aligned with header */}
+      <div
+        className="no-print hidden md:block fixed top-6 z-50"
+        style={{ right: projOffsetRight }}
+      >
+        <button
+          type="button"
+          onClick={goToProjects}
+          className="attention-pulse-30s flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-white shadow-lg bg-gradient-to-r from-[#F59E0B] to-[#F97316] dark:from-[#FB923C] dark:to-[#F59E0B] hover:opacity-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/50"
+          aria-label={router.locale === 'fr' ? 'Voir les projets' : 'View Projects'}
+          title={router.locale === 'fr' ? 'Voir les projets' : 'View Projects'}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h6m0 0v6m0-6l-8 8M7 17h0"/>
+          </svg>
+          {router.locale === 'fr' ? 'Projets' : 'Projects'}
+        </button>
+      </div>
+
       <div
         id="cv-print-area"
         ref={cvRef}
-        className={`mt-32 mx-auto bg-white dark:bg-color-970 shadow-2xl rounded-lg overflow-hidden print:shadow-none print:rounded-none transition-all duration-300 ease-out ${leaving ? 'opacity-0 translate-y-2' : enterReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
-        style={{ width: '210mm' }}
+        className={`mt-32 mx-auto relative aos-instant bg-white dark:bg-color-970 shadow-2xl rounded-lg overflow-hidden print:shadow-none print:rounded-none transition-all duration-300 ease-out ${leaving ? 'opacity-0 translate-y-2' : enterReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+        style={{ width: 'min(280mm, 94.5vw)' }}
       >
+        {/* Decorative background (theme-aware lines: teal in light, gold in dark) */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-0">
+          <svg className="absolute -top-24 -left-24 w-[220mm] h-[220mm] opacity-20 print:opacity-25 text-cyan-400 dark:text-amber-300" viewBox="0 0 100 100" fill="none">
+            <path d="M0 20 C20 10, 40 30, 60 20 S100 30, 100 20" stroke="currentColor" strokeWidth="0.6" fill="none"/>
+            <path d="M0 30 C20 20, 40 40, 60 30 S100 40, 100 30" stroke="currentColor" strokeWidth="0.5" fill="none" opacity="0.7"/>
+            <path d="M0 40 C20 30, 40 50, 60 40 S100 50, 100 40" stroke="currentColor" strokeWidth="0.5" fill="none" opacity="0.4"/>
+          </svg>
+          <svg className="absolute -bottom-28 -right-24 w-[200mm] h-[200mm] opacity-20 print:opacity-25 text-cyan-300 dark:text-amber-200" viewBox="0 0 100 100" fill="none">
+            <path d="M0 60 C15 55, 35 65, 50 60 S85 65, 100 60" stroke="currentColor" strokeWidth="0.6" fill="none"/>
+            <path d="M0 70 C15 65, 35 75, 50 70 S85 75, 100 70" stroke="currentColor" strokeWidth="0.5" fill="none" opacity="0.7"/>
+            <path d="M0 80 C15 75, 35 85, 50 80 S85 85, 100 80" stroke="currentColor" strokeWidth="0.5" fill="none" opacity="0.4"/>
+          </svg>
+        </div>
+
+
         {/* Body */}
-        <div className="grid grid-cols-1 md:grid-cols-3">
+        <div className="relative z-10 grid grid-cols-1 md:grid-cols-12">
           {/* Sidebar */}
           <aside
-            className="md:col-span-1 bg-gray-50 dark:bg-color-980/70 text-gray-800 dark:text-gray-200"
+            className="md:col-span-4 bg-slate-800 text-slate-100 dark:bg-color-980 dark:text-gray-200"
             data-aos="fade-right"
           >
-            <div className="text-center bg-gray-100 dark:bg-color-970/50 pt-12 pb-10">
-                <div className="w-36 h-36 mx-auto rounded-full overflow-hidden ring-4 ring-white dark:ring-color-990 shadow-lg image-container">
+            <div className="text-center bg-gray-100 dark:bg-color-970/50 pt-10 pb-8 relative overflow-hidden">
+                <div aria-hidden="true" className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-6 w-52 h-52 opacity-10">
+                  <svg width="100%" height="100%">
+                    <defs>
+                      <pattern id="avatar-dots" width="10" height="10" patternUnits="userSpaceOnUse">
+                        <circle cx="1" cy="1" r="1" fill="#9CA3AF" />
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#avatar-dots)" />
+                  </svg>
+                </div>
+                <div className="relative w-36 h-36 mx-auto rounded-full overflow-hidden ring-4 ring-white dark:ring-color-990 shadow-xl image-container">
                   <Image
                     src="/images/about/avatar.jpg"
                     alt={t('cvName')}
@@ -339,33 +581,49 @@ const OnlineCV = () => {
               </p>
             </div>
 
-            <div className="p-8 space-y-8">
+            <div className="p-7 space-y-6">
               <SidebarSection title="Contact">
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center">
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center py-0.5">
                     <MailIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
-                    <span className="truncate">{t("cvEmail")}</span>
+                    <span className="truncate leading-[1.35]">{t("cvEmail")}</span>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center py-0.5">
                     <PhoneIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
-                    <span className="truncate">{t("cvPhone")}</span>
+                    <span className="truncate leading-[1.35]">{t("cvPhone")}</span>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center py-0.5">
                     <LocationIcon className="w-5 h-5 mr-3 text-gray-500 dark:text-gray-400" />
-                    <span className="truncate">{t("cvLocation")}</span>
+                    <span className="truncate leading-[1.35]">{t("cvLocation")}</span>
                   </div>
                 </div>
               </SidebarSection>
 
               <SidebarSection title={t("cvLanguagesTitle")}>
-                <div className="space-y-2 text-sm">
-                  <LineItem label={t("cvLanguage1")} note={t("cvLanguage1Level")} />
-                  <LineItem label={t("cvLanguage2")} note={t("cvLanguage2Level")} />
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">{t("cvLanguage1")}</span>
+                      <span className="text-[10px] opacity-80">{t("cvLanguage1Level")}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full overflow-hidden bg-white/20 dark:bg-white/10">
+                      <div className="h-full bg-white/80 dark:bg-white" style={{ width: '98%' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">{t("cvLanguage2")}</span>
+                      <span className="text-[10px] opacity-80">{t("cvLanguage2Level")}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full overflow-hidden bg-white/20 dark:bg-white/10">
+                      <div className="h-full bg-white/80 dark:bg-white" style={{ width: '85%' }} />
+                    </div>
+                  </div>
                 </div>
               </SidebarSection>
 
               <SidebarSection title={t("cvSkillsTitle")}>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-1.5 text-xs">
                   {skills.map((s, i) => (
                     <li key={i} className="flex items-center">
                       <CheckIcon className="w-4 h-4 mr-2 text-[#FA5252]" />
@@ -377,9 +635,9 @@ const OnlineCV = () => {
 
               {tools.length > 0 && (
                 <SidebarSection title={t("cvToolsTitle", { defaultValue: "Logiciels" })}>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1">
                     {tools.map((tool, i) => (
-                      <span key={i} className="px-3 py-1 text-xs rounded-full bg-gray-200/80 dark:bg-white/10 text-gray-700 dark:text-gray-200">
+                      <span key={i} className="inline-flex h-5 items-center justify-center px-2 leading-none text-[10px] rounded-full bg-gray-200/80 dark:bg-white/10 text-gray-200">
                         {tool}
                       </span>
                     ))}
@@ -389,7 +647,7 @@ const OnlineCV = () => {
 
               {hobbies.length > 0 && (
                 <SidebarSection title={t("cvHobbiesTitle", { defaultValue: "Passions & Activités" })}>
-                  <ul className="space-y-2 text-sm">
+                  <ul className="space-y-2 text-xs">
                     {hobbies.map((h, i) => (
                        <li key={i} className="flex items-center">
                          <HeartIcon className="w-4 h-4 mr-2 text-[#DD2476]" />
@@ -401,7 +659,7 @@ const OnlineCV = () => {
               )}
 
               <SidebarSection title={t("cvCertificationsTitle")}>
-                <ul className="text-sm space-y-2">
+                <ul className="text-xs space-y-2">
                   <li className="flex items-center">
                     <Badge className="w-5 h-5 mr-2" />
                     <div>
@@ -417,9 +675,14 @@ const OnlineCV = () => {
           </aside>
 
           {/* Main content */}
-          <main className="md:col-span-2 p-8 md:p-10 text-gray-700 dark:text-gray-300">
+          <main className="md:col-span-8 p-5 md:p-7 text-gray-700 dark:text-gray-300">
+            {/* Header (Name + Title) */}
+            <div className="mb-6 pb-3 border-b border-gray-200 dark:border-gray-700 flex items-end justify-between">
+              <h1 className="text-2xl font-extrabold tracking-wide text-slate-800 dark:text-white">{t("cvName")}</h1>
+              <span className="text-xs md:text-sm uppercase tracking-wider text-slate-500 dark:text-gray-400">{t("cvJobTitle")}</span>
+            </div>
             {t("cvSummary", { defaultValue: "" }) ? (
-                <div className="mb-10" data-aos="fade-up">
+                <div className="mb-8" data-aos="fade-up">
                   <SectionTitle>{t("cvAboutMeTitle", { defaultValue: "À propos de moi"})}</SectionTitle>
                   <p className="text-base text-gray-600 dark:text-color-910 leading-relaxed">
                     {t("cvSummary")}
@@ -427,7 +690,7 @@ const OnlineCV = () => {
                 </div>
               ) : null}
 
-            <div className="mb-10" data-aos="fade-up" data-aos-delay="100">
+            <div className="mb-8" data-aos="fade-up" data-aos-delay="100">
               <SectionTitle>{t("cvExperienceTitle")}</SectionTitle>
               <div className="space-y-8">
                 {experiences.map((exp, idx) => (
@@ -440,16 +703,16 @@ const OnlineCV = () => {
                         {exp.date}
                       </span>
                     </div>
-                    <p className="text-md text-[#FA5252] font-medium mb-2">{exp.company}</p>
+                    <p className="text-md font-medium mb-2 text-cyan-700 dark:text-amber-300">{exp.company}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                       {exp.description}
                     </p>
                     {exp.skills?.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-wrap gap-1">
                         {exp.skills.map((tag, i) => (
                           <span
                             key={i}
-                            className="px-2.5 py-0.5 text-xs rounded-full bg-[#FFF4F4] dark:bg-color-980 text-[#FA5252] dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
+                            className="inline-flex h-5 items-center justify-center px-2 leading-none text-[10px] rounded-full bg-[#FFF4F4] dark:bg-color-980 text-[#FA5252] dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
                           >
                             {tag}
                           </span>
@@ -461,7 +724,7 @@ const OnlineCV = () => {
               </div>
             </div>
 
-            <div className="mb-10" data-aos="fade-up" data-aos-delay="150">
+            <div className="mb-8" data-aos="fade-up" data-aos-delay="150">
               <SectionTitle>{t("cvEducationTitle")}</SectionTitle>
               <div className="space-y-6">
                 {education.map((ed, i) => (
@@ -482,46 +745,34 @@ const OnlineCV = () => {
               </div>
             </div>
 
-            <div data-aos="fade-up" data-aos-delay="200">
-              <SectionTitle>{t("cvProjectsTitle")}</SectionTitle>
-              <div className="space-y-8">
-                {projects.map((p, i) => (
-                  <div key={i} className="break-inside-avoid">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
-                      <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
-                        {p.title}
-                      </h3>
-                      {p.date ? (
-                        <span className="text-sm text-gray-500 dark:text-gray-400 mt-1 sm:mt-0">
-                          {p.date}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-                      {p.description}
-                    </p>
-                    {p.skills?.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {p.skills.map((tag, j) => (
-                           <span
-                            key={j}
-                            className="px-2.5 py-0.5 text-xs rounded-full bg-[#FFF4F4] dark:bg-color-980 text-[#FA5252] dark:text-[#FF6464] border border-[#ffd1d1] dark:border-color-990"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Projects moved to dedicated page (see floating button on right) */}
           </main>
         </div>
       </div>
 
       {/* Print & export specific styles */}
       <style jsx global>{`
+        /* Subtle attention animation for the Projects button: two quick pulses every 30s */
+        @keyframes attentionPulse30s {
+          0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.0); }
+          1.5% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(249, 115, 22, 0.15); }
+          3%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.0); }
+          4.5% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(249, 115, 22, 0.12); }
+          6%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.0); }
+        }
+        .attention-pulse-30s {
+          animation: attentionPulse30s 30s ease-in-out infinite;
+          will-change: transform, box-shadow;
+        }
+
+        /* Disable AOS scroll-in effects within this CV: render immediately */
+        .aos-instant [data-aos] {
+          opacity: 1 !important;
+          transform: none !important;
+          transition: none !important;
+        }
+
         /* Keep avatar stable during export */
         #cv-print-area.exporting .image-container img {
           object-fit: cover !important;
@@ -530,16 +781,21 @@ const OnlineCV = () => {
         /* Screen adjustments so A4 width never overflows viewport */
         @media screen {
           #cv-print-area {
-            width: min(210mm, 95vw);
+            /* Slightly wider on desktop to visually match PDF */
+            width: min(220mm, 99vw);
             height: auto;
           }
         }
 
         @media print {
-          body {
+          html, body {
+            /* Keep colors and slightly shrink layout to force single page */
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            background: white !important;
+            background: inherit !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            zoom: 0.96;
           }
           .no-print {
             display: none !important;
@@ -560,13 +816,12 @@ const OnlineCV = () => {
           #cv-print-area {
             display: block !important;
             width: 210mm !important;
-            min-height: 297mm !important; /* Use min-height for print */
-            height: auto !important;
+            height: 297mm !important;
             box-shadow: none !important;
             border-radius: 0 !important;
             margin: 0 !important;
             border: none !important;
-            overflow: visible !important;
+            overflow: hidden !important;
           }
 
           #cv-print-area .break-inside-avoid {
@@ -590,7 +845,7 @@ const SidebarSection = ({ title, children }) => (
 const SectionTitle = ({ children }) => (
   <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-6 pb-2 border-b-2 border-gray-200 dark:border-gray-700/50 relative">
     {children}
-    <span className="absolute bottom-[-2px] left-0 w-24 h-[3px] bg-gradient-to-r from-[#FA5252] to-[#DD2476]" />
+    <span className="absolute bottom-[-2px] left-0 w-24 h-[3px] bg-gradient-to-r from-[#06B6D4] to-[#34D399] dark:from-[#D4AF37] dark:to-[#F6E27A]" />
   </h2>
 );
 

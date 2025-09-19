@@ -48,6 +48,12 @@
   "cvExp3Description": "Collecte de données Python (APIs) et publication sous Power BI.",
   "cvExp3Skills": ["Python", "Power BI", "APIs", "Analyse de données"],
 
+  "cvExp4Title": "Assistant ingénieur études et développement",
+  "cvExp4Company": "Degetel",
+  "cvExp4Date": "2020 (stage)",
+  "cvExp4Description": "Modèles de machine learning pour la prédiction de la performance projet (Python) et tableaux de bord interactifs sur Google Cloud Platform, pour une meilleure planification et prise de décision.",
+  "cvExp4Skills": ["Python", "Machine Learning", "GCP", "Tableaux de bord"],
+
   "cvEducationTitle": "Formation",
   "cvEducation1Title": "INTECH Paris (Groupe ESIEA) — Programme Ingénierie du logiciel",
   "cvEducation1Date": "2019 → 2023",
